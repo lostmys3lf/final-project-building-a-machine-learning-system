@@ -137,13 +137,14 @@ jobs:
             --image docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${{ needs.train.outputs.run_id }} \
             --project ${GCP_PROJECT} --region ${GCP_REGION} --port 8080 \
             --memory 2Gi --cpu 1 --min-instances 0 --max-instances 1 \
+            --execution-environment gen2 \
             --set-env-vars MLFLOW_MODELS_WORKERS=1 \
             --allow-unauthenticated --quiet
 
       - name: Smoke test endpoint
         run: |
           URL=$(gcloud run services describe ${SERVICE_NAME} --project ${GCP_PROJECT} --region ${GCP_REGION} --format 'value(status.url)')
-          curl -sf "${URL}/ping"
+          curl -sf --retry 10 --retry-delay 6 --retry-all-errors "${URL}/ping"   # Tunggu model selesai dimuat saat cold start
           python3 -c "import json; print(json.dumps({'inputs': [[[0.0] * 25] * 48]}))" > payload.json   # Satu window 48 jam x 25 fitur
           curl -sf -X POST "${URL}/invocations" -H "Content-Type: application/json" -d @payload.json
           echo "Model aktif di ${URL}" >> $GITHUB_STEP_SUMMARY
