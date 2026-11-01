@@ -1,5 +1,5 @@
 # Model validation (MLOps level 1): model kandidat dibandingkan dengan model champion di data test yang sama
-# Kandidat cuma dipromosikan jadi champion kalau lebih akurat dari champion dan dari baseline
+# Kandidat dipromosikan kalau mengalahkan baseline dan tidak lebih buruk dari champion melebihi toleransi (non-regression)
 
 import argparse
 import json
@@ -51,6 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", default="prediksi-pm25-lstm")
     parser.add_argument("--alias", default="champion")
     parser.add_argument("--report", default="reports/model_validation.json")
+    parser.add_argument("--tolerance", type=float, default=0.01)              # Batas penurunan akurasi yang masih diterima (1%)
     args = parser.parse_args()
 
     client = MlflowClient()
@@ -58,13 +59,13 @@ if __name__ == "__main__":
     version, champ_mae, method = champion_mae(client, args.model_name, args.alias, args.data_dir)
 
     checks = {"beats_baseline": candidate["test_mae_ugm3"] < candidate["baseline_mae_ugm3"],
-              "beats_champion": champ_mae is None or candidate["test_mae_ugm3"] < champ_mae}
+              "no_regression_vs_champion": champ_mae is None or candidate["test_mae_ugm3"] <= champ_mae * (1 + args.tolerance)}   # Model hasil pipeline dengan data terbaru diutamakan selama tidak turun signifikan
     promote = all(checks.values())
 
     report = {"candidate_run_id": candidate["run_id"], "candidate_mae_ugm3": candidate["test_mae_ugm3"],
               "baseline_mae_ugm3": candidate["baseline_mae_ugm3"],
               "champion_version": version.version if version else None, "champion_mae_ugm3": champ_mae,
-              "champion_eval_method": method, "checks": checks, "promote": promote}
+              "champion_eval_method": method, "tolerance": args.tolerance, "checks": checks, "promote": promote}
 
     new_version = ""
     if promote:
@@ -86,6 +87,7 @@ if __name__ == "__main__":
                    f"| Kandidat | {candidate['test_mae_ugm3']:.2f} |",
                    f"| Champion v{report['champion_version']} ({method}) | {champ_text} |",
                    f"| Baseline jam sebelumnya | {candidate['baseline_mae_ugm3']:.2f} |",
+                   f"\nToleransi non-regression: {args.tolerance:.0%} dari MAE champion",
                    f"\n**Keputusan:** {'promote ke champion v' + str(new_version) if promote else 'champion dipertahankan'}"])
     write_github_output(promote=str(promote).lower(), run_id=candidate["run_id"], model_version=new_version)
     print(json.dumps(report, indent=2))
