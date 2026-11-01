@@ -143,12 +143,13 @@ jobs:
 
       - name: Deploy ke Cloud Run
         run: |
+          # DISABLE_NGINX: Cloud Run menolak symlink log nginx milik image MLflow, jadi gunicorn langsung melayani di port 8080
           gcloud run deploy ${SERVICE_NAME} \
             --image docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${{ needs.train.outputs.run_id }} \
             --project ${GCP_PROJECT} --region ${GCP_REGION} --port 8080 \
             --memory 2Gi --cpu 1 --min-instances 0 --max-instances 1 \
             --execution-environment gen2 \
-            --set-env-vars MLFLOW_MODELS_WORKERS=1 \
+            --set-env-vars "DISABLE_NGINX=true,GUNICORN_CMD_ARGS=--bind=0.0.0.0:8080 --workers=1 --timeout=120" \
             --allow-unauthenticated --quiet
 
       - name: Smoke test endpoint
