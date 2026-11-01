@@ -103,8 +103,8 @@ flowchart LR
     S --> I[Ingest data from UCI] --> P[Preprocess] --> DV{Data validation}
     DV -- schema error --> X[Stop pipeline]
     DV -- passed --> TR[Train] --> MV{Model validation<br/>vs champion}
-    MV -- worse --> K[Keep champion]
-    MV -- better --> R[Register + alias champion] --> B[Build and push image] --> D[Deploy to Cloud Run + smoke test]
+    MV -- regression > 1% --> K[Keep champion]
+    MV -- passed --> R[Register + alias champion] --> B[Build and push image] --> D[Deploy to Cloud Run + smoke test]
     K --> O[Stop GPU VM]
     D --> O
 ```
@@ -114,7 +114,7 @@ flowchart LR
 | Pipeline triggers | Weekly schedule, manual dispatch, `repository_dispatch` API event (for example a drift alert), and code changes |
 | Data validation | `pipeline/validate_data.py` stops the run on schema skew (columns, types, missing values, stations, split dates) and reports value skew as a standardized mean difference against reference statistics |
 | Continuous training | `pipeline/train.py` retrains with the same model code as experimentation, on a GPU runner that the workflow starts and stops on demand |
-| Model validation | `pipeline/validate_model.py` re-evaluates the current champion on the same test set; the candidate is promoted only if it beats both the champion and the naive baseline |
+| Model validation | `pipeline/validate_model.py` re-evaluates the current champion on the same test set; the candidate is promoted only if it beats the naive baseline and stays within a 1% non-regression tolerance of the champion |
 | Metadata management | Every run logs parameters, metrics, the data validation report, the model validation report, git SHA, and trigger type to MLflow on DagsHub |
 | Continuous delivery | Promoted models get a new registry version and the `champion` alias, then the image is pushed and deployed to Cloud Run with a smoke test |
 
