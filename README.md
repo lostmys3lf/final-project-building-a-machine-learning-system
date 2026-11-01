@@ -89,7 +89,9 @@ Alerts follow the four golden signals from the Google SRE book and send email no
 
 All three were validated with a load test using real test data, and each fired and delivered its notification.
 
-![Latency p95 alert rule](assets/alert-latency-p95.jpg)
+![Latency p95 alert rule and its email notification](assets/alert-latency-p95.jpg)
+
+*Left: the latency p95 rule crossing its 500 ms threshold during the load test. Right: the email notification Grafana delivered.*
 
 ## 5. Continuous training pipeline (MLOps Level 1)
 
