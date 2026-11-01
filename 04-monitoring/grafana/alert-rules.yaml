@@ -1,0 +1,111 @@
+# Grafana alert rules (file provisioning format).
+# Replace ${DS_PROMETHEUS} with the UID of your Prometheus data source before provisioning.
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: pm25-lstm
+      folder: MSML Alerting
+      interval: 10s
+      rules:
+        - uid: pm25-latency-p95
+          title: Latency p95 API Model Tinggi
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: ${DS_PROMETHEUS}
+              model:
+                editorMode: code
+                expr: 'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{model="pm25-lstm"}[1m])))'
+                instant: true
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                type: threshold
+                expression: A
+                refId: C
+                conditions:
+                  - evaluator:
+                      params: [0.5]
+                      type: gt
+          noDataState: OK
+          execErrState: Error
+          for: 1m
+          annotations:
+            summary: Latency p95 API model di atas 500 ms
+            description: '95% request terakhir selesai dalam {{ humanize $values.A.Value }} detik, melewati batas 0,5 detik selama 1 menit.'
+          labels:
+            model: pm25-lstm
+            severity: warning
+        - uid: pm25-error-rate
+          title: Error Rate API Model Tinggi
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: ${DS_PROMETHEUS}
+              model:
+                editorMode: code
+                expr: 'sum(rate(http_requests_failed_total{model="pm25-lstm"}[1m])) / sum(rate(http_requests_total{model="pm25-lstm"}[1m]))'
+                instant: true
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                type: threshold
+                expression: A
+                refId: C
+                conditions:
+                  - evaluator:
+                      params: [0.05]
+                      type: gt
+          noDataState: OK
+          execErrState: Error
+          for: 1m
+          annotations:
+            summary: Lebih dari 5% request prediksi gagal
+            description: 'Error rate API model {{ humanizePercentage $values.A.Value }}, melewati batas 5% selama 1 menit.'
+          labels:
+            model: pm25-lstm
+            severity: critical
+        - uid: pm25-ram-usage
+          title: Penggunaan RAM Server Tinggi
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: ${DS_PROMETHEUS}
+              model:
+                editorMode: code
+                expr: 'system_ram_usage{model="pm25-lstm"}'
+                instant: true
+                range: false
+                refId: A
+            - refId: C
+              datasourceUid: __expr__
+              model:
+                type: threshold
+                expression: A
+                refId: C
+                conditions:
+                  - evaluator:
+                      params: [90]
+                      type: gt
+          noDataState: OK
+          execErrState: Error
+          for: 1m
+          annotations:
+            summary: Penggunaan RAM server model di atas 90%
+            description: 'RAM terpakai {{ humanize $values.A.Value }}%, melewati batas 90% selama 1 menit.'
+          labels:
+            model: pm25-lstm
+            severity: warning
