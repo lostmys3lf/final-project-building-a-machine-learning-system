@@ -1,0 +1,114 @@
+{
+  "columns": [
+    "PM2.5",
+    "PM10",
+    "SO2",
+    "NO2",
+    "CO",
+    "O3",
+    "TEMP",
+    "PRES",
+    "DEWP",
+    "RAIN",
+    "WSPM",
+    "station",
+    "datetime",
+    "wd_sin",
+    "wd_cos",
+    "st_Aotizhongxin",
+    "st_Changping",
+    "st_Dingling",
+    "st_Dongsi",
+    "st_Guanyuan",
+    "st_Gucheng",
+    "st_Huairou",
+    "st_Nongzhanguan",
+    "st_Shunyi",
+    "st_Tiantan",
+    "st_Wanliu",
+    "st_Wanshouxigong"
+  ],
+  "id_columns": [
+    "station",
+    "datetime"
+  ],
+  "scaled_columns": [
+    "PM2.5",
+    "PM10",
+    "SO2",
+    "NO2",
+    "CO",
+    "O3",
+    "TEMP",
+    "PRES",
+    "DEWP",
+    "RAIN",
+    "WSPM"
+  ],
+  "stations": [
+    "Aotizhongxin",
+    "Changping",
+    "Dingling",
+    "Dongsi",
+    "Guanyuan",
+    "Gucheng",
+    "Huairou",
+    "Nongzhanguan",
+    "Shunyi",
+    "Tiantan",
+    "Wanliu",
+    "Wanshouxigong"
+  ],
+  "test_start_date": "2016-03-01",
+  "min_rows": {
+    "train": 300000,
+    "test": 80000
+  },
+  "drift_threshold_smd": 0.25,
+  "reference_stats": {
+    "PM2.5": {
+      "mean": 80.4066,
+      "std": 80.4132
+    },
+    "PM10": {
+      "mean": 106.084,
+      "std": 91.8316
+    },
+    "SO2": {
+      "mean": 17.921,
+      "std": 23.8067
+    },
+    "NO2": {
+      "mean": 51.2711,
+      "std": 35.109
+    },
+    "CO": {
+      "mean": 1247.6894,
+      "std": 1133.6904
+    },
+    "O3": {
+      "mean": 56.8494,
+      "std": 56.4009
+    },
+    "TEMP": {
+      "mean": 13.3857,
+      "std": 11.448
+    },
+    "PRES": {
+      "mean": 1010.6492,
+      "std": 10.4683
+    },
+    "DEWP": {
+      "mean": 2.3998,
+      "std": 13.862
+    },
+    "RAIN": {
+      "mean": 0.0608,
+      "std": 0.7948
+    },
+    "WSPM": {
+      "mean": 1.7083,
+      "std": 1.2674
+    }
+  }
+}
