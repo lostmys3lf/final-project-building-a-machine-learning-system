@@ -1,0 +1,166 @@
+# Pipeline continuous training (Google MLOps level 1):
+# ingest data -> data validation -> training -> model validation -> registry -> build image -> deploy Cloud Run
+name: Continuous Training
+
+on:
+  schedule:
+    - cron: "0 19 * * 0"                            # Setiap Senin 02.00 WIB, latih ulang dengan data terbaru dari sumber
+  workflow_dispatch:                                # Jalan manual dari tab Actions
+    inputs:
+      epochs:
+        description: "Jumlah epoch maksimum"
+        default: "15"
+  repository_dispatch:
+    types: [retrain]                                # Dipicu dari luar lewat GitHub API, misalnya saat drift terdeteksi
+  push:
+    branches: [main]
+    paths:                                          # Jalan kalau kode pipeline, preprocessing, atau model berubah
+      - "pipeline/**"
+      - "01-experiment/automate_mardi-jefri.py"
+      - "02-modelling/modelling.py"
+      - "02-modelling/modelling_tuning.py"
+      - ".github/workflows/continuous-training.yml"
+
+permissions:
+  contents: read
+  id-token: write                                   # Token OIDC untuk login ke GCP tanpa service account key
+
+concurrency:
+  group: continuous-training                        # Satu pipeline jalan dalam satu waktu
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: project-f9262c16-d41b-407d-9e6
+  GCP_ZONE: asia-southeast1-a
+  GCP_REGION: asia-southeast1
+  RUNNER_VM: runner-msml-gpu
+  IMAGE_NAME: prediksi-pm25-lstm
+  SERVICE_NAME: pm25-lstm-api
+
+jobs:
+  start-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login ke GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Nyalakan VM runner GPU
+        run: gcloud compute instances start ${RUNNER_VM} --zone ${GCP_ZONE} --project ${GCP_PROJECT}   # VM cuma menyala selama training
+
+  train:
+    needs: start-runner
+    runs-on: self-hosted
+    timeout-minutes: 90
+    outputs:
+      promote: ${{ steps.model_validation.outputs.promote }}
+      run_id: ${{ steps.model_validation.outputs.run_id }}
+    env:
+      MLFLOW_TRACKING_URI: https://dagshub.com/lostmys3lf/pm25-lstm-model.mlflow
+      MLFLOW_TRACKING_USERNAME: lostmys3lf
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.DAGSHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.7"
+
+      - name: Check Env
+        run: |
+          python --version
+          nvidia-smi
+
+      - name: Install library
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Ingest data
+        run: python pipeline/ingest_data.py --output data/raw
+
+      - name: Preprocessing
+        run: python 01-experiment/automate_mardi-jefri.py --raw data/raw --output data/processed
+
+      - name: Data validation
+        run: python pipeline/validate_data.py --data_dir data/processed
+
+      - name: Training
+        run: python pipeline/train.py --data_dir data/processed --epochs ${{ github.event.inputs.epochs || 15 }}
+
+      - name: Model validation
+        id: model_validation
+        run: python pipeline/validate_model.py --data_dir data/processed
+
+      - name: Build image Docker dengan MLflow
+        if: steps.model_validation.outputs.promote == 'true'
+        run: mlflow models build-docker --model-uri "runs:/${{ steps.model_validation.outputs.run_id }}/model" --name ${IMAGE_NAME} --env-manager local
+
+      - name: Login ke Docker Hub
+        if: steps.model_validation.outputs.promote == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image ke Docker Hub
+        if: steps.model_validation.outputs.promote == 'true'
+        run: |
+          RUN_ID=${{ steps.model_validation.outputs.run_id }}
+          docker tag ${IMAGE_NAME} ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${RUN_ID}
+          docker tag ${IMAGE_NAME} ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${RUN_ID}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
+
+  deploy:
+    needs: train
+    if: needs.train.outputs.promote == 'true'           # Cuma model yang lolos validasi yang di-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login ke GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy ke Cloud Run
+        run: |
+          gcloud run deploy ${SERVICE_NAME} \
+            --image docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${{ needs.train.outputs.run_id }} \
+            --project ${GCP_PROJECT} --region ${GCP_REGION} --port 8080 \
+            --memory 2Gi --cpu 1 --min-instances 0 --max-instances 1 \
+            --set-env-vars MLFLOW_MODELS_WORKERS=1 \
+            --allow-unauthenticated --quiet
+
+      - name: Smoke test endpoint
+        run: |
+          URL=$(gcloud run services describe ${SERVICE_NAME} --project ${GCP_PROJECT} --region ${GCP_REGION} --format 'value(status.url)')
+          curl -sf "${URL}/ping"
+          python3 -c "import json; print(json.dumps({'inputs': [[[0.0] * 25] * 48]}))" > payload.json   # Satu window 48 jam x 25 fitur
+          curl -sf -X POST "${URL}/invocations" -H "Content-Type: application/json" -d @payload.json
+          echo "Model aktif di ${URL}" >> $GITHUB_STEP_SUMMARY
+
+  stop-runner:
+    needs: [start-runner, train]
+    if: always()                                     # VM tetap dimatikan walaupun training gagal
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login ke GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Matikan VM runner GPU
+        run: gcloud compute instances stop ${RUNNER_VM} --zone ${GCP_ZONE} --project ${GCP_PROJECT}
