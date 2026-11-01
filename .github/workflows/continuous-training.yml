@@ -78,6 +78,12 @@ jobs:
           python --version
           nvidia-smi
 
+      - name: Bersihkan disk runner
+        run: |
+          docker system prune -af                    # Image lama sudah tersimpan di Docker Hub, aman dihapus dari VM
+          pip cache purge || true
+          df -h /
+
       - name: Install library
         run: pip install -r pipeline/requirements.txt
 
@@ -116,6 +122,10 @@ jobs:
           docker tag ${IMAGE_NAME} ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${RUN_ID}
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
+
+      - name: Hapus image lokal setelah push
+        if: always()
+        run: docker system prune -af                 # Disk VM tetap lega untuk run berikutnya
 
   deploy:
     needs: train
