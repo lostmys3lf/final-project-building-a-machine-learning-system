@@ -65,7 +65,6 @@ Each trial is logged manually to MLflow on DagsHub with per-epoch metrics, the m
 
 `ci.yml` retrains the model through an MLflow Project whenever the project changes (or on manual dispatch), commits the `mlruns` artifacts back to the repository, then builds a serving image with `mlflow models build-docker` and pushes it to Docker Hub with two tags: `latest` and the MLflow `run_id`. The job runs on a self-hosted runner on a GCP VM with an NVIDIA L4 GPU.
 
-![GitHub Actions CI run](assets/ci-pipeline-run.jpg)
 
 ## 4. Serving, monitoring, and alerting
 
@@ -119,6 +118,10 @@ flowchart LR
 | Continuous delivery | Promoted models get a new registry version and the `champion` alias, then the image is pushed and deployed to Cloud Run with a smoke test |
 
 GCP access uses Workload Identity Federation (no service account keys), set up once with `pipeline/gcp_setup.sh`.
+
+![Continuous training run](assets/ci-pipeline-run.jpg)
+
+*A full pipeline run: the GPU runner is started on demand, the retrained candidate (MAE 9.30) passes validation against the champion (9.33), is promoted to champion v5, deployed to Cloud Run, smoke-tested, and the runner is stopped again.*
 
 ## Repository structure
 
