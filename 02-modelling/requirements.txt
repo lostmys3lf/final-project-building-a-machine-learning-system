@@ -1,0 +1,13 @@
+# Versi library yang dipakai waktu training di Google Colab (Python 3.13)
+# mlflow 2.19.0 membatasi protobuf < 6, sedangkan tensorflow 2.21.0 butuh protobuf >= 6.31.1.
+# Karena itu protobuf dipasang terpisah setelah file ini:
+#   pip install -r requirements.txt
+#   pip install --no-deps protobuf==6.33.6
+mlflow==2.19.0
+dagshub==0.7.3
+tensorflow==2.21.0
+pandas==2.2.3
+numpy==2.1.3
+scikit-learn==1.6.1
+matplotlib==3.10.0
+joblib==1.6.0
