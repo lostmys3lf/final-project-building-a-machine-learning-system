@@ -1,0 +1,21 @@
+# Data mentah dan hasil preprocessing (dibuat ulang lewat automate)
+beijing_air_quality_raw/
+**/beijing_air_quality_preprocessing/
+
+# Artefak MLflow lokal
+mlruns/
+mlartifacts/
+
+# Environment dan cache Python
+.venv/
+venv/
+__pycache__/
+.ipynb_checkpoints/
+
+# Kredensial
+.env
+*.json.key
+
+# Output pipeline continuous training
+data/
+reports/
