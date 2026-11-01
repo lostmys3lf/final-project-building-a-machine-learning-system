@@ -1,0 +1,75 @@
+# Workflow CI: training ulang model lewat MLflow Project, simpan artefak, lalu build image Docker ke Docker Hub (kriteria 3 Advanced)
+name: CI Retrain Model
+
+on:
+  push:
+    branches: [main]
+    paths:                                          # Jalan cuma kalau isi MLProject atau workflow ini berubah
+      - "MLProject/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:                                # Bisa dijalankan manual dari tab Actions
+    inputs:
+      epochs:
+        description: "Jumlah epoch training"
+        default: "3"
+
+permissions:
+  contents: write                                   # Dibutuhkan supaya workflow bisa commit folder mlruns ke repo
+
+env:
+  IMAGE_NAME: prediksi-pm25-lstm
+
+jobs:
+  retrain:
+    runs-on: self-hosted                          # Runner yang kita bikin dari google cloud
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.7"
+
+      - name: Check Env
+        run: |
+          python --version                            # Versi Python di runner
+          pip --version                               # Versi pip yang dipakai untuk install library
+          nvidia-smi                                  # Info GPU dan driver di VM runner
+
+      - name: Install library
+        run: pip install mlflow==2.19.0 tensorflow[and-cuda]==2.19.1 pandas==2.2.3 numpy==2.1.3 scikit-learn==1.6.1 joblib==1.6.0   # Sama dengan conda.yaml
+
+      - name: Jalankan MLflow Project
+        run: mlflow run MLProject --env-manager=local -P epochs=${{ github.event.inputs.epochs || 3 }}   # Library sudah diinstall di langkah sebelumnya
+
+      - name: Ambil run_id terbaru
+        run: |
+          RUN_ID=$(python -c "import mlflow; print(mlflow.search_runs(experiment_ids=['0'], order_by=['start_time DESC'], max_results=1).iloc[0].run_id)")
+          echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
+          echo "Run terbaru: $RUN_ID"
+
+      - name: Simpan artefak ke repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add mlruns
+          git diff --staged --quiet || git commit -m "Simpan artefak training CI (run ${RUN_ID})"   # Commit cuma kalau ada perubahan
+          git push
+
+      - name: Build image Docker dengan MLflow
+        run: mlflow models build-docker --model-uri "runs:/${RUN_ID}/model" --name ${IMAGE_NAME} --env-manager local   # Base image python slim, lebih cepat dibanding default Ubuntu
+
+      - name: Login ke Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image ke Docker Hub
+        run: |
+          docker tag ${IMAGE_NAME} ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
+          docker tag ${IMAGE_NAME} ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${RUN_ID}   # Tag run_id supaya tiap versi model tetap bisa ditarik lagi
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${IMAGE_NAME}:${RUN_ID}

@@ -1,0 +1,9 @@
+name: prediksi-pm25-lstm
+
+conda_env: conda.yaml
+
+entry_points:
+  main:
+    parameters:
+      epochs: {type: int, default: 3}   # Kecil karena runner GitHub gratis cuma pakai CPU
+    command: "python modelling.py --epochs {epochs}"
